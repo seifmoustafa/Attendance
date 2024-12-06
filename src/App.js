@@ -3,12 +3,10 @@ import {
   Box,
   Button,
   Card,
-  CardContent,
   Typography,
   Grid,
   Snackbar,
   Alert,
-  Paper,
   CircularProgress,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
@@ -167,81 +165,91 @@ function App() {
         codesData.find((entry) => entry["الكود"] === parseInt(code, 10)) || {};
   
       // ترتيب السجلات حسب الوقت
-      const sortedRecords = records.sort(
-        (a, b) => a.Timestamp - b.Timestamp
-      );
+      const sortedRecords = records.sort((a, b) => a.Timestamp - b.Timestamp);
   
-      const processedShifts = [];
+      const processedDates = new Set();
       const singleEntryDays = new Set();
   
-      sortedRecords.forEach((record, index) => {
-        if (processedShifts.includes(index)) return;
+      for (let i = 0; i < sortedRecords.length; i++) {
+        const currentEntry = sortedRecords[i];
+        const currentDate = currentEntry.Timestamp.toISOString().split("T")[0];
+        const currentHour = currentEntry.Timestamp.getHours();
   
-        const currentShiftStart = record.Timestamp;
-        const currentHour = currentShiftStart.getHours();
-        let shiftType = "صباحي";
+        // إذا تمت معالجة هذا التاريخ من قبل، يتم تجاوزه
+        if (processedDates.has(`${currentDate}-صباحي`) && currentHour < 15) continue;
+        if (processedDates.has(`${currentDate}-مسائي`) && currentHour >= 15) continue;
+  
+        let shiftType = currentHour >= 15 ? "مسائي" : "صباحي";
         let shiftEnd = null;
   
-        if (currentHour >= 12) {
-          // مسائي: البحث عن بصمة اليوم التالي صباحًا كخروج
-          shiftType = "مسائي";
-  
-          const nextDayRecords = sortedRecords.slice(index + 1).filter((next) => {
-            return (
-              next.Timestamp > currentShiftStart &&
-              next.Timestamp.getDate() > currentShiftStart.getDate() &&
-              next.Timestamp.getHours() < 12
-            );
-          });
-  
-          shiftEnd = nextDayRecords.length > 0 ? nextDayRecords[0].Timestamp : null;
-  
-          if (!shiftEnd) {
-            shiftEnd = currentShiftStart;
-            singleEntryDays.add(
-              currentShiftStart.toISOString().split("T")[0]
-            ); // تسجيل اليوم كبصمة واحدة فقط
-          } else {
-            const endIndex = sortedRecords.indexOf(nextDayRecords[0]);
-            processedShifts.push(endIndex);
+        if (shiftType === "صباحي") {
+          // معالجة الشيفت الصباحي
+          for (let j = i + 1; j < sortedRecords.length; j++) {
+            const nextEntry = sortedRecords[j];
+            const nextDate = nextEntry.Timestamp.toISOString().split("T")[0];
+            if (
+              nextDate === currentDate &&
+              nextEntry.Timestamp.getHours() >= 12 &&
+              nextEntry.Timestamp.getHours() < 15
+            ) {
+              shiftEnd = nextEntry.Timestamp;
+              break;
+            }
           }
         } else {
-          // صباحي: البحث عن بصمة نفس اليوم مساءً كخروج
-          const sameDayRecords = sortedRecords.slice(index + 1).filter((next) => {
-            return (
-              next.Timestamp.getDate() === currentShiftStart.getDate() &&
-              next.Timestamp.getHours() >= 12
-            );
-          });
-  
-          shiftEnd = sameDayRecords.length > 0 ? sameDayRecords[0].Timestamp : null;
-  
-          if (!shiftEnd) {
-            shiftEnd = currentShiftStart;
-            singleEntryDays.add(
-              currentShiftStart.toISOString().split("T")[0]
-            ); // تسجيل اليوم كبصمة واحدة فقط
-          } else {
-            const endIndex = sortedRecords.indexOf(sameDayRecords[0]);
-            processedShifts.push(endIndex);
+          // معالجة الشيفت المسائي
+          for (let j = i + 1; j < sortedRecords.length; j++) {
+            const nextEntry = sortedRecords[j];
+            const nextDate = nextEntry.Timestamp.toISOString().split("T")[0];
+            if (
+              nextDate !== currentDate ||
+              (nextDate === currentDate && nextEntry.Timestamp.getHours() < 5)
+            ) {
+              shiftEnd = nextEntry.Timestamp;
+              break;
+            }
           }
         }
   
-        const durationHours = Math.abs((shiftEnd - currentShiftStart) / 36e5);
+        // إذا لم يتم العثور على بصمة خروج
+        if (!shiftEnd) {
+          singleEntryDays.add(currentDate);
+          results.push({
+            الكود: code,
+            الاسم: employeeInfo["الاسم"] || "Unknown",
+            التاريخ: currentDate,
+            "وقت الدخول": currentEntry.Timestamp.toLocaleTimeString(),
+            "وقت الخروج": "لم يسجل",
+            "نوع الشيفت": shiftType,
+            "عدد ساعات العمل": "0.00",
+            الحالة: "غياب",
+          });
+        } else {
+          const durationHours = Math.abs((shiftEnd - currentEntry.Timestamp) / 36e5);
   
-        results.push({
-          الكود: code,
-          الاسم: employeeInfo["الاسم"] || "Unknown",
-          التاريخ: currentShiftStart.toISOString().split("T")[0],
-          "وقت الدخول": currentShiftStart.toLocaleTimeString(),
-          "وقت الخروج": shiftEnd.toLocaleTimeString(),
-          "نوع الشيفت": shiftType,
-          "عدد ساعات العمل": durationHours.toFixed(2),
-          الحالة: durationHours < 8 ? "غياب" : "حضور",
-        });
-      });
+          results.push({
+            الكود: code,
+            الاسم: employeeInfo["الاسم"] || "Unknown",
+            التاريخ: currentDate,
+            "وقت الدخول": currentEntry.Timestamp.toLocaleTimeString(),
+            "وقت الخروج": shiftEnd.toLocaleTimeString(),
+            "نوع الشيفت": shiftType,
+            "عدد ساعات العمل": durationHours.toFixed(2),
+            الحالة: durationHours < 8 ? "غياب" : "حضور",
+          });
   
-      // حساب عدد أيام الحضور والغياب
+          // تجاوز جميع البصمات بين أول وآخر بصمة
+          const endIndex = sortedRecords.findIndex(
+            (entry) => entry.Timestamp.getTime() === shiftEnd.getTime()
+          );
+          i = endIndex;
+        }
+  
+        // تسجيل الورديات التي تمت معالجتها
+        processedDates.add(`${currentDate}-${shiftType}`);
+      }
+  
+      // تحليل عدد أيام الحضور والغياب
       const uniqueDates = [...new Set(results.map((r) => r.التاريخ))];
       analysis.push({
         الكود: code,
@@ -256,21 +264,22 @@ function App() {
       (sum, employee) => sum + employee["عدد أيام الحضور"],
       0
     );
+  
     const singleEntryEmployees = analysis.filter(
       (entry) => entry["عدد الأيام ببصمة واحدة"] > 0
     ).length;
+  
     return {
       data: results,
       analysis: analysis,
       totalAttendance: totalAttendance,
       singleEntryEmployees: singleEntryEmployees,
-
     };
   };
+    
+    
   
-  
-      
-
+        
   const groupBy = (array, key) =>
     array.reduce((result, currentValue) => {
       const groupKey =
