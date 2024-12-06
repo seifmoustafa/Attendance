@@ -172,9 +172,9 @@ function App() {
       );
   
       const processedShifts = [];
+      const singleEntryDays = new Set();
   
       sortedRecords.forEach((record, index) => {
-        // إذا تم معالجة هذه البصمة من قبل، يتم تجاهلها
         if (processedShifts.includes(index)) return;
   
         const currentShiftStart = record.Timestamp;
@@ -188,6 +188,7 @@ function App() {
   
           const nextDayRecords = sortedRecords.slice(index + 1).filter((next) => {
             return (
+              next.Timestamp > currentShiftStart &&
               next.Timestamp.getDate() > currentShiftStart.getDate() &&
               next.Timestamp.getHours() < 12
             );
@@ -195,14 +196,13 @@ function App() {
   
           shiftEnd = nextDayRecords.length > 0 ? nextDayRecords[0].Timestamp : null;
   
-          // إذا لم توجد بصمة صباح اليوم التالي، اعتبره سجل مرة واحدة
           if (!shiftEnd) {
             shiftEnd = currentShiftStart;
+            singleEntryDays.add(
+              currentShiftStart.toISOString().split("T")[0]
+            ); // تسجيل اليوم كبصمة واحدة فقط
           } else {
-            // إضافة البصمة التالية إلى المعالجة
-            const endIndex = sortedRecords.indexOf(
-              nextDayRecords[0]
-            );
+            const endIndex = sortedRecords.indexOf(nextDayRecords[0]);
             processedShifts.push(endIndex);
           }
         } else {
@@ -216,19 +216,17 @@ function App() {
   
           shiftEnd = sameDayRecords.length > 0 ? sameDayRecords[0].Timestamp : null;
   
-          // إذا لم توجد بصمة مساءً، اعتبره سجل مرة واحدة
           if (!shiftEnd) {
             shiftEnd = currentShiftStart;
+            singleEntryDays.add(
+              currentShiftStart.toISOString().split("T")[0]
+            ); // تسجيل اليوم كبصمة واحدة فقط
           } else {
-            // إضافة البصمة التالية إلى المعالجة
-            const endIndex = sortedRecords.indexOf(
-              sameDayRecords[0]
-            );
+            const endIndex = sortedRecords.indexOf(sameDayRecords[0]);
             processedShifts.push(endIndex);
           }
         }
   
-        // حساب عدد الساعات
         const durationHours = Math.abs((shiftEnd - currentShiftStart) / 36e5);
   
         results.push({
@@ -250,6 +248,7 @@ function App() {
         الاسم: employeeInfo["الاسم"] || "Unknown",
         "عدد أيام الحضور": uniqueDates.length,
         "عدد أيام الغياب": 30 - uniqueDates.length,
+        "عدد الأيام ببصمة واحدة": singleEntryDays.size,
       });
     }
   
@@ -257,13 +256,18 @@ function App() {
       (sum, employee) => sum + employee["عدد أيام الحضور"],
       0
     );
-  
+    const singleEntryEmployees = analysis.filter(
+      (entry) => entry["عدد الأيام ببصمة واحدة"] > 0
+    ).length;
     return {
       data: results,
       analysis: analysis,
       totalAttendance: totalAttendance,
+      singleEntryEmployees: singleEntryEmployees,
+
     };
   };
+  
   
       
 
@@ -421,7 +425,16 @@ function App() {
               </Card>
 
             </Grid>
+            <Grid item xs={4}>
+      <Card sx={{ boxShadow: 4, padding: 2, textAlign: "center" }}>
+        <Typography variant="h6">Single Entry Employees</Typography>
+        <Typography variant="h4" color="warning">
+          {analysisResult.filter((e) => e["عدد الأيام ببصمة واحدة"] > 0).length}
+        </Typography>
+      </Card>
+    </Grid>
           </Grid>
+          
         </Grid>
 
         {/* Charts */}
@@ -431,34 +444,38 @@ function App() {
               Attendance vs Absence
             </Typography>
             <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={[
-                    {
-                      name: "عدد الحضور",
-                      value: attendanceResult.filter(
-                        (e) => e["الحالة"] === "حضور"
-                      ).length,
-                    },
-                    {
-                      name: "عدد الغياب",
-                      value: attendanceResult.filter(
-                        (e) => e["الحالة"] === "غياب"
-                      ).length,
-                    },
-                  ]}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  fill="#8884d8"
-                  label
-                >
-                  <Cell fill="#4caf50" />
-                  <Cell fill="#f44336" />
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+  <PieChart>
+    <Pie
+      data={[
+        {
+          name: "عدد الحضور",
+          value: attendanceResult.filter((e) => e["الحالة"] === "حضور").length,
+        },
+        {
+          name: "عدد الغياب",
+          value: attendanceResult.filter((e) => e["الحالة"] === "غياب").length,
+        },
+        {
+          name: "بصمة واحدة",
+          value: analysisResult.filter(
+            (e) => e["عدد الأيام ببصمة واحدة"] > 0
+          ).length,
+        },
+      ]}
+      cx="50%"
+      cy="50%"
+      outerRadius={100}
+      fill="#8884d8"
+      label
+    >
+      <Cell fill="#4caf50" /> {/* الحضور */}
+      <Cell fill="#f44336" /> {/* الغياب */}
+      <Cell fill="#ff9800" /> {/* بصمة واحدة */}
+    </Pie>
+    <Tooltip />
+  </PieChart>
+</ResponsiveContainer>
+
           </Card>
         </Grid>
         <Grid item xs={12} md={6}>
