@@ -158,80 +158,114 @@ function App() {
 
   const processAttendanceData = (attendanceData, codesData) => {
     const groupedData = groupBy(attendanceData, "EmployeeCode");
-
+  
     const results = [];
     const analysis = [];
-
+  
     for (const [code, records] of Object.entries(groupedData)) {
       const employeeInfo =
         codesData.find((entry) => entry["الكود"] === parseInt(code, 10)) || {};
-      const groupedByDate = groupBy(records, (record) =>
-        record.Timestamp.getHours() < 8
-          ? new Date(record.Timestamp.setDate(record.Timestamp.getDate() - 1))
-              .toISOString()
-              .split("T")[0]
-          : record.Timestamp.toISOString().split("T")[0]
+  
+      // ترتيب السجلات حسب الوقت
+      const sortedRecords = records.sort(
+        (a, b) => a.Timestamp - b.Timestamp
       );
-
-      Object.entries(groupedByDate).forEach(([date, dayRecords]) => {
-        if (dayRecords.length >= 2) {
-          const firstEntry = dayRecords.reduce((a, b) =>
-            a.Timestamp < b.Timestamp ? a : b
-          );
-          const lastExit = dayRecords.reduce((a, b) =>
-            a.Timestamp > b.Timestamp ? a : b
-          );
-
-          const durationHours = Math.abs(
-            (lastExit.Timestamp - firstEntry.Timestamp) / 36e5
-          );
-          const shiftType =
-            firstEntry.Timestamp.getHours() < 20 &&
-            firstEntry.Timestamp.getHours() >= 8
-              ? "صباحي"
-              : "مسائي";
-
-          // احتساب الحضور أو الغياب
-          const isAbsent = durationHours < 8;
-
-          results.push({
-            الكود: code,
-            الاسم: employeeInfo["الاسم"] || "Unknown",
-            التاريخ: date,
-            "وقت الدخول": firstEntry.Timestamp.toLocaleTimeString(),
-            "وقت الخروج": lastExit.Timestamp.toLocaleTimeString(),
-            "نوع الشيفت": shiftType,
-            "عدد ساعات العمل": durationHours.toFixed(2),
-            الحالة: isAbsent ? "غياب" : "حضور", // إضافة الحالة
+  
+      const processedShifts = [];
+  
+      sortedRecords.forEach((record, index) => {
+        // إذا تم معالجة هذه البصمة من قبل، يتم تجاهلها
+        if (processedShifts.includes(index)) return;
+  
+        const currentShiftStart = record.Timestamp;
+        const currentHour = currentShiftStart.getHours();
+        let shiftType = "صباحي";
+        let shiftEnd = null;
+  
+        if (currentHour >= 12) {
+          // مسائي: البحث عن بصمة اليوم التالي صباحًا كخروج
+          shiftType = "مسائي";
+  
+          const nextDayRecords = sortedRecords.slice(index + 1).filter((next) => {
+            return (
+              next.Timestamp.getDate() > currentShiftStart.getDate() &&
+              next.Timestamp.getHours() < 12
+            );
           });
+  
+          shiftEnd = nextDayRecords.length > 0 ? nextDayRecords[0].Timestamp : null;
+  
+          // إذا لم توجد بصمة صباح اليوم التالي، اعتبره سجل مرة واحدة
+          if (!shiftEnd) {
+            shiftEnd = currentShiftStart;
+          } else {
+            // إضافة البصمة التالية إلى المعالجة
+            const endIndex = sortedRecords.indexOf(
+              nextDayRecords[0]
+            );
+            processedShifts.push(endIndex);
+          }
+        } else {
+          // صباحي: البحث عن بصمة نفس اليوم مساءً كخروج
+          const sameDayRecords = sortedRecords.slice(index + 1).filter((next) => {
+            return (
+              next.Timestamp.getDate() === currentShiftStart.getDate() &&
+              next.Timestamp.getHours() >= 12
+            );
+          });
+  
+          shiftEnd = sameDayRecords.length > 0 ? sameDayRecords[0].Timestamp : null;
+  
+          // إذا لم توجد بصمة مساءً، اعتبره سجل مرة واحدة
+          if (!shiftEnd) {
+            shiftEnd = currentShiftStart;
+          } else {
+            // إضافة البصمة التالية إلى المعالجة
+            const endIndex = sortedRecords.indexOf(
+              sameDayRecords[0]
+            );
+            processedShifts.push(endIndex);
+          }
         }
+  
+        // حساب عدد الساعات
+        const durationHours = Math.abs((shiftEnd - currentShiftStart) / 36e5);
+  
+        results.push({
+          الكود: code,
+          الاسم: employeeInfo["الاسم"] || "Unknown",
+          التاريخ: currentShiftStart.toISOString().split("T")[0],
+          "وقت الدخول": currentShiftStart.toLocaleTimeString(),
+          "وقت الخروج": shiftEnd.toLocaleTimeString(),
+          "نوع الشيفت": shiftType,
+          "عدد ساعات العمل": durationHours.toFixed(2),
+          الحالة: durationHours < 8 ? "غياب" : "حضور",
+        });
       });
-
-      const uniqueDates = Object.keys(groupedByDate);
-      const singleEntries = uniqueDates.filter(
-        (date) => groupedByDate[date].length === 1
-      );
-
+  
+      // حساب عدد أيام الحضور والغياب
+      const uniqueDates = [...new Set(results.map((r) => r.التاريخ))];
       analysis.push({
         الكود: code,
         الاسم: employeeInfo["الاسم"] || "Unknown",
         "عدد أيام الحضور": uniqueDates.length,
         "عدد أيام الغياب": 30 - uniqueDates.length,
-        "عدد الأيام ببصمة واحدة": singleEntries.length,
       });
     }
-
+  
     const totalAttendance = analysis.reduce(
       (sum, employee) => sum + employee["عدد أيام الحضور"],
       0
     );
-
+  
     return {
       data: results,
       analysis: analysis,
       totalAttendance: totalAttendance,
     };
   };
+  
+      
 
   const groupBy = (array, key) =>
     array.reduce((result, currentValue) => {

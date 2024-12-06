@@ -11,21 +11,24 @@
     "@mui/x-data-grid": "^7.23.1",
     "cra-template": "1.2.0",
     "file-saver": "^2.0.5",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^7.0.2",
     "react-scripts": "5.0.1",
     "recharts": "^2.14.1",
     "web-vitals": "^4.2.4",
     "xlsx": "^0.18.5"
   },
- "scripts": {
-  "start": "react-scripts start",
-  "build": "react-scripts build",
-  "test": "react-scripts test",
-  "eject": "react-scripts eject",
-  "predeploy": "npm run build",
-  "deploy": "gh-pages -d build"
-},
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
+  },
   "eslintConfig": {
     "extends": [
       "react-app",
